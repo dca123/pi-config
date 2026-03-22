@@ -1,0 +1,8 @@
+{
+  "lastChangelogVersion": "0.61.1",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.4",
+  "hideThinkingBlock": true,
+  "defaultThinkingLevel": "medium",
+  "steeringMode": "one-at-a-time"
+}

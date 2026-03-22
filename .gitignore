@@ -1,0 +1,16 @@
+# Secrets / machine-local auth
+auth.json
+
+# Session history and runtime state
+sessions/
+git/
+
+# Logs / temp files
+*.log
+.DS_Store
+
+# Optional local deps if an extension installs packages in-place
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
