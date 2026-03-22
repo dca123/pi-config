@@ -2,8 +2,6 @@
 
 Personal `pi` global config, extensions, and setup notes.
 
-This repo is intended to reproduce the contents of `~/.pi/agent` on another machine **without** syncing secrets or session history.
-
 ## What is included
 
 - `settings.json`
@@ -78,7 +76,6 @@ pi
 or:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
 pi
 ```
 
