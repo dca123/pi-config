@@ -1,6 +1,47 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
+const EXA_QPS = 10;
+const EXA_MIN_INTERVAL_MS = Math.ceil(1000 / EXA_QPS);
+let exaRequestChain = Promise.resolve();
+let exaLastRequestAt = 0;
+
+async function wait(ms: number, signal?: AbortSignal) {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(signal?.reason ?? new Error("Request aborted"));
+    };
+
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function scheduleExaRequest<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const run = async () => {
+    const now = Date.now();
+    const waitMs = Math.max(0, exaLastRequestAt + EXA_MIN_INTERVAL_MS - now);
+    await wait(waitMs, signal);
+    exaLastRequestAt = Date.now();
+    return task();
+  };
+
+  const scheduled = exaRequestChain.then(run, run);
+  exaRequestChain = scheduled.then(
+    () => undefined,
+    () => undefined,
+  );
+  return scheduled;
+}
+
 /**
  * Exa web search tool for pi.
  *
@@ -26,7 +67,11 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal) {
       const numResults = params.numResults ?? 5;
-
+      const exaApiKey = process.env.EXA_API_KEY;
+      if (!exaApiKey) {
+        throw new Error("EXA_API_KEY is not set. Start pi with EXA_API_KEY in the environment.");
+      }
+      const exaMcpUrl = `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(exaApiKey)}&tools=web_search_exa`;
 
       // OpenCode-style Exa MCP call (SSE transcript parsing, not streaming)
       const searchRequest = {
@@ -45,15 +90,19 @@ export default function (pi: ExtensionAPI) {
         },
       };
 
-      const res = await fetch("https://mcp.exa.ai/mcp", {
-        method: "POST",
-        headers: {
-          accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(searchRequest),
+      const res = await scheduleExaRequest(
+        () =>
+          fetch(exaMcpUrl, {
+            method: "POST",
+            headers: {
+              accept: "application/json, text/event-stream",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(searchRequest),
+            signal,
+          }),
         signal,
-      });
+      );
 
       if (!res.ok) {
         const errorText = await res.text();
