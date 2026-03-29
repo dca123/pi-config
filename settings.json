@@ -1,8 +1,13 @@
 {
-  "lastChangelogVersion": "0.61.1",
+  "lastChangelogVersion": "0.63.2",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
-  "steeringMode": "one-at-a-time"
+  "steeringMode": "one-at-a-time",
+  "packages": [
+    "npm:@plannotator/pi-extension",
+    "npm:@ogulcancelik/pi-session-recall",
+    "https://github.com/davebcn87/pi-autoresearch"
+  ]
 }

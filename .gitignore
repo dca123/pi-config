@@ -9,6 +9,9 @@ git/
 *.log
 .DS_Store
 
+# Tool/runtime caches
+cache/
+
 # Optional local deps if an extension installs packages in-place
 node_modules/
 package-lock.json
