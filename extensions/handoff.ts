@@ -484,8 +484,8 @@ export default function (pi: ExtensionAPI) {
 
     guardSuppressed = true;
     const id = queuePendingHandoff(AUTO_HANDOFF_GOAL, "guard");
-    pi.sendUserMessage(`/${INTERNAL_COMMAND} ${id}`, { deliverAs: "followUp" });
-    ctx.ui.notify("Queued handoff to a new session.", "info");
+    ctx.ui.setEditorText(`/${INTERNAL_COMMAND} ${id}`);
+    ctx.ui.notify("Handoff prepared — press Enter to run it.", "info");
   });
 
   pi.registerCommand("handoff", {
@@ -538,13 +538,13 @@ export default function (pi: ExtensionAPI) {
       }
 
       const id = queuePendingHandoff(goal, "tool");
-      pi.sendUserMessage(`/${INTERNAL_COMMAND} ${id}`, { deliverAs: "followUp" });
+      ctx.ui.setEditorText(`/${INTERNAL_COMMAND} ${id}`);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: "Queued handoff. A new session will open after the current turn completes.",
+            text: "Prepared handoff command in the editor. After this turn finishes, press Enter to run it.",
           },
         ],
         details: {},

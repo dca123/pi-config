@@ -1,13 +1,17 @@
 {
-  "lastChangelogVersion": "0.63.2",
+  "lastChangelogVersion": "0.66.1",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
+  "theme": "tokyo-night",
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
   "steeringMode": "one-at-a-time",
   "packages": [
     "npm:@plannotator/pi-extension",
     "npm:@ogulcancelik/pi-session-recall",
-    "https://github.com/davebcn87/pi-autoresearch"
-  ]
+    "git:git@github.com:dca123/pi-autoresearch@pi-0.65-session-start"
+  ],
+  "terminal": {
+    "showImages": true
+  }
 }
