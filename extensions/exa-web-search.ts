@@ -1,10 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 const EXA_QPS = 10;
 const EXA_MIN_INTERVAL_MS = Math.ceil(1000 / EXA_QPS);
 let exaRequestChain = Promise.resolve();
 let exaLastRequestAt = 0;
+const execFileAsync = promisify(execFile);
 
 async function wait(ms: number, signal?: AbortSignal) {
   if (ms <= 0) return;
@@ -23,6 +26,32 @@ async function wait(ms: number, signal?: AbortSignal) {
     const cleanup = () => signal?.removeEventListener("abort", onAbort);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+async function getExaApiKey() {
+  const envKey = process.env.EXA_API_KEY?.trim();
+  if (envKey) return envKey;
+
+  if (process.platform === "darwin") {
+    try {
+      const { stdout } = await execFileAsync("security", [
+        "find-generic-password",
+        "-a",
+        process.env.USER || "",
+        "-s",
+        "EXA_API_KEY",
+        "-w",
+      ]);
+      const keychainKey = stdout.trim();
+      if (keychainKey) return keychainKey;
+    } catch {
+      // Fall through to the final error below.
+    }
+  }
+
+  throw new Error(
+    "EXA_API_KEY is not set. Set EXA_API_KEY in the environment or store it in macOS Keychain with: security add-generic-password -a \"$USER\" -s EXA_API_KEY -w",
+  );
 }
 
 async function scheduleExaRequest<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -67,10 +96,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal) {
       const numResults = params.numResults ?? 5;
-      const exaApiKey = process.env.EXA_API_KEY;
-      if (!exaApiKey) {
-        throw new Error("EXA_API_KEY is not set. Start pi with EXA_API_KEY in the environment.");
-      }
+      const exaApiKey = await getExaApiKey();
       const exaMcpUrl = `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(exaApiKey)}&tools=web_search_exa`;
 
       // OpenCode-style Exa MCP call (SSE transcript parsing, not streaming)
