@@ -1,13 +1,13 @@
 {
   "lastChangelogVersion": "0.66.1",
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.4",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-4-6",
   "theme": "tokyo-night",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "defaultThinkingLevel": "medium",
   "steeringMode": "one-at-a-time",
   "packages": [
-    "npm:@plannotator/pi-extension",
+    "/Users/devindasenanayake/Projects/plannotator/apps/pi-extension",
     "npm:@ogulcancelik/pi-session-recall",
     "git:git@github.com:dca123/pi-autoresearch@pi-0.65-session-start"
   ],
