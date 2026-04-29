@@ -439,17 +439,25 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const switchResult = await ctx.newSession({ parentSession });
+    const sessionName =
+      normalizedGoal.length > 80 ? `${normalizedGoal.slice(0, 77)}...` : normalizedGoal;
+
+    // Cast for forward-compatibility while still loading on Pi 0.67.x, whose
+    // local ExtensionCommandContext typings do not yet include withSession.
+    const switchResult = await ctx.newSession({
+      parentSession,
+      setup: async (sm) => {
+        sm.appendSessionInfo(sessionName);
+      },
+      withSession: async (newCtx) => {
+        newCtx.ui.setEditorText(editedPrompt);
+        newCtx.ui.notify("Handoff ready — edit if needed, press Enter to send.", "info");
+      },
+    } as any);
     if (switchResult.cancelled) {
       ctx.ui.notify("New session cancelled.", "info");
       return;
     }
-
-    pi.setSessionName(
-      normalizedGoal.length > 80 ? `${normalizedGoal.slice(0, 77)}...` : normalizedGoal,
-    );
-    ctx.ui.setEditorText(editedPrompt);
-    ctx.ui.notify("Handoff ready — edit if needed, press Enter to send.", "info");
   }
 
   pi.on("session_start", (_event, ctx) => {
