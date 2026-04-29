@@ -1,7 +1,7 @@
-import type { ExtensionAPI } from "/Users/devindasenanayake/.nvm/versions/node/v22.21.1/lib/node_modules/@mariozechner/pi-coding-agent/dist/index.js";
-import { getAgentDir } from "/Users/devindasenanayake/.nvm/versions/node/v22.21.1/lib/node_modules/@mariozechner/pi-coding-agent/dist/index.js";
-import { Type } from "/Users/devindasenanayake/.nvm/versions/node/v22.21.1/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@sinclair/typebox/build/cjs/index.js";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { spawn } from "node:child_process";

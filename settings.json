@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.70.2",
+  "lastChangelogVersion": "0.70.6",
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.3-codex",
+  "defaultModel": "gpt-5.5",
   "theme": "tokyo-night",
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
@@ -9,7 +9,8 @@
   "packages": [
     "/Users/devindasenanayake/Projects/plannotator/apps/pi-extension",
     "npm:@ogulcancelik/pi-session-recall",
-    "git:git@github.com:dca123/pi-autoresearch@pi-0.65-session-start"
+    "git:git@github.com:davebcn87/pi-autoresearch@main",
+    "npm:pi-rewind"
   ],
   "terminal": {
     "showImages": true

@@ -11,9 +11,11 @@ git/
 
 # Tool/runtime caches
 cache/
+bin/
 
 # Optional local deps if an extension installs packages in-place
 node_modules/
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+settings.json
