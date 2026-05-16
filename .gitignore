@@ -9,6 +9,9 @@ git/
 *.log
 .DS_Store
 
+# Local agent settings
+settings.json
+
 # Tool/runtime caches
 cache/
 bin/
@@ -18,4 +21,3 @@ node_modules/
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
-settings.json
