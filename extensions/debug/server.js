@@ -1,5 +1,5 @@
 const { createServer } = require("node:http");
-const { mkdir, readFile, writeFile, rm } = require("node:fs/promises");
+const { appendFile, mkdir, writeFile, rm } = require("node:fs/promises");
 const { dirname } = require("node:path");
 
 const [portArg, host, logPath, statePath] = process.argv.slice(2);
@@ -17,12 +17,7 @@ async function appendLog(label, data) {
       ? `[${ts}] ${label} | ${JSON.stringify(data)}\n`
       : `[${ts}] ${label}\n`;
 
-  let prev = "";
-  try {
-    prev = await readFile(logPath, "utf8");
-  } catch {}
-
-  await writeFile(logPath, prev + line, "utf8");
+  await appendFile(logPath, line, "utf8");
 }
 
 async function writeState(serverPort) {
@@ -103,6 +98,17 @@ const server = createServer(async (req, res) => {
   }
 
   send(res, 404, "Not found");
+});
+
+server.on("error", async (error) => {
+  try {
+    await appendLog("debug-server-error", {
+      message: error && error.message ? error.message : String(error),
+      code: error && error.code ? error.code : undefined,
+    });
+  } catch {}
+  await cleanup();
+  process.exit(1);
 });
 
 server.listen(port, host, async () => {

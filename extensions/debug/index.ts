@@ -1,5 +1,5 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, truncateTail } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -68,6 +68,17 @@ function buildUrls(state: PersistedState, publicHost?: string | null) {
   };
 }
 
+type DebugStatus = {
+  active: boolean;
+  logPath: string;
+  port: number | null;
+  pid?: number;
+  startedAt?: string;
+  loopbackUrl?: string;
+  lanUrl?: string | null;
+  recommendedUrl?: string;
+};
+
 async function isHealthy(port: number) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`);
@@ -111,42 +122,76 @@ async function startServer(port: number, host: string) {
   }
 }
 
-async function stopServer() {
-  const state = await readState();
-  if (!state) return false;
-
+async function terminateServer(state: PersistedState) {
   try {
     process.kill(state.pid, "SIGTERM");
   } catch {}
 
   for (let i = 0; i < 20; i += 1) {
     const healthy = await isHealthy(state.port);
-    if (!healthy) break;
+    const alive = await isPidAlive(state.pid);
+    if (!healthy && !alive) break;
     await sleep(100);
   }
+}
 
+async function stopServer() {
+  const state = await readState();
+  if (!state) return false;
+
+  await terminateServer(state);
   await clearState();
   return true;
 }
 
-async function readLogLines() {
+async function readLogLines(): Promise<{ lines: string[]; error?: string }> {
   try {
     const text = await readFile(logPath, "utf8");
-    return text.split("\n").filter(Boolean);
-  } catch {
-    return [];
+    return { lines: text.split("\n").filter(Boolean) };
+  } catch (err: unknown) {
+    const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : undefined;
+    if (code === "ENOENT") {
+      return { lines: [] };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return { lines: [], error: `Failed to read log: ${msg}` };
   }
 }
 
-function formatStatusText(active: boolean, urls?: ReturnType<typeof buildUrls>, state?: PersistedState | null) {
-  if (!active || !state || !urls) return `Debug mode inactive\nLog: ${logPath}`;
+function formatStatusText(status: DebugStatus) {
+  if (!status.active) return `Debug mode inactive\nLog: ${logPath}`;
   return [
     "Debug mode active",
-    `Recommended URL: ${urls.recommendedUrl}`,
-    `Loopback URL: ${urls.loopbackUrl}`,
-    ...(urls.lanUrl ? [`LAN URL: ${urls.lanUrl}`] : []),
+    `Recommended URL: ${status.recommendedUrl}`,
+    `Loopback URL: ${status.loopbackUrl}`,
+    ...(status.lanUrl ? [`LAN URL: ${status.lanUrl}`] : []),
+    `Port: ${status.port}`,
+    `PID: ${status.pid}`,
     `Log: ${logPath}`,
   ].join("\n");
+}
+
+async function getStatus(publicHost?: string | null): Promise<DebugStatus> {
+  const state = await readState();
+  if (!state) {
+    return { active: false, logPath, port: null };
+  }
+
+  const active = await isHealthy(state.port);
+  if (!active) {
+    await clearState();
+    return { active: false, logPath, port: null };
+  }
+
+  const urls = buildUrls(state, publicHost ?? null);
+  return {
+    active: true,
+    ...urls,
+    logPath,
+    port: state.port,
+    pid: state.pid,
+    startedAt: state.startedAt,
+  };
 }
 
 export default function debugExtension(pi: ExtensionAPI) {
@@ -165,14 +210,15 @@ export default function debugExtension(pi: ExtensionAPI) {
 
       const existingState = await readState();
       if (existingState && (await isHealthy(existingState.port))) {
-        const urls = buildUrls(existingState, params.publicHost ?? null);
+        const status = await getStatus(params.publicHost ?? null);
         return {
-          content: [{ type: "text", text: formatStatusText(true, urls, existingState) }],
-          details: { active: true, ...urls, logPath, port: existingState.port, pid: existingState.pid },
+          content: [{ type: "text", text: formatStatusText(status) }],
+          details: status,
         };
       }
 
-      if (existingState && !(await isPidAlive(existingState.pid))) {
+      if (existingState) {
+        await terminateServer(existingState);
         await clearState();
       }
 
@@ -180,13 +226,12 @@ export default function debugExtension(pi: ExtensionAPI) {
       const host = params.host ?? "0.0.0.0";
       await startServer(port, host);
 
-      const nextState = await readState();
-      if (!nextState) throw new Error("Debug server started but state file missing");
+      const status = await getStatus(params.publicHost ?? null);
+      if (!status.active) throw new Error("Debug server started but status check failed");
 
-      const urls = buildUrls(nextState, params.publicHost ?? null);
       return {
-        content: [{ type: "text", text: formatStatusText(true, urls, nextState) }],
-        details: { active: true, ...urls, logPath, port: nextState.port, pid: nextState.pid },
+        content: [{ type: "text", text: formatStatusText(status) }],
+        details: status,
       };
     },
   });
@@ -198,27 +243,10 @@ export default function debugExtension(pi: ExtensionAPI) {
     promptSnippet: "Check whether the debug server is running and get its URL.",
     parameters: Type.Object({}),
     async execute() {
-      const state = await readState();
-      if (!state) {
-        return {
-          content: [{ type: "text", text: formatStatusText(false) }],
-          details: { active: false, url: null, logPath, port: null },
-        };
-      }
-
-      const active = await isHealthy(state.port);
-      if (!active) {
-        await clearState();
-        return {
-          content: [{ type: "text", text: formatStatusText(false) }],
-          details: { active: false, url: null, logPath, port: null },
-        };
-      }
-
-      const urls = buildUrls(state, null);
+      const status = await getStatus();
       return {
-        content: [{ type: "text", text: formatStatusText(true, urls, state) }],
-        details: { active: true, ...urls, logPath, port: state.port, pid: state.pid },
+        content: [{ type: "text", text: formatStatusText(status) }],
+        details: status,
       };
     },
   });
@@ -230,11 +258,21 @@ export default function debugExtension(pi: ExtensionAPI) {
     promptSnippet: "Read captured runtime debug logs.",
     parameters: READ_PARAMS,
     async execute(_toolCallId, params) {
-      const lines = await readLogLines();
+      const { lines, error } = await readLogLines();
       const out = params.tail && params.tail > 0 ? lines.slice(-params.tail) : lines;
+
+      const status = await getStatus();
+      const raw = out.length > 0 ? out.join("\n") : "Debug log empty";
+      const truncation = truncateTail(raw);
+      const logText = truncation.truncated
+        ? `${truncation.content}\n\n[Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines. Use tail param to narrow.]`
+        : truncation.content;
+
+      const errorText = error ? `\n⚠️ ${error}` : "";
+
       return {
-        content: [{ type: "text", text: out.length > 0 ? out.join("\n") : "Debug log empty" }],
-        details: { count: out.length, total: lines.length, logPath },
+        content: [{ type: "text", text: `${logText}${errorText}\n\n${formatStatusText(status)}` }],
+        details: { count: out.length, total: lines.length, truncated: truncation.truncated, error: error ?? null, ...status },
       };
     },
   });
@@ -248,9 +286,12 @@ export default function debugExtension(pi: ExtensionAPI) {
     async execute() {
       await ensureLogDir();
       await writeFile(logPath, "", "utf8");
+
+      const status = await getStatus();
+
       return {
-        content: [{ type: "text", text: `Cleared\nLog: ${logPath}` }],
-        details: { cleared: true, logPath },
+        content: [{ type: "text", text: `Cleared\n${formatStatusText(status)}` }],
+        details: { cleared: true, ...status },
       };
     },
   });
@@ -263,14 +304,12 @@ export default function debugExtension(pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute() {
       await stopServer();
+      const status = await getStatus();
       return {
-        content: [{ type: "text", text: `Stopped\nLog: ${logPath}` }],
-        details: { active: false, logPath },
+        content: [{ type: "text", text: `Stopped\n${formatStatusText(status)}` }],
+        details: status,
       };
     },
   });
 
-  pi.on("session_shutdown", async () => {
-    await stopServer().catch(() => {});
-  });
 }
