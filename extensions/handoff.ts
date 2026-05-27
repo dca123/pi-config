@@ -1,17 +1,17 @@
-import { complete, type Message, type Model } from "@mariozechner/pi-ai";
+import { complete, type Message, type Model } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
   SessionEntry,
   SessionHeader,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   BorderedLoader,
   buildSessionContext,
   convertToLlm,
   serializeConversation,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -90,7 +90,7 @@ const HANDOFF_HINT = `
 ## Handoff
 
 Use the \`handoff\` tool only when the user explicitly asks to move the work into a new session.
-Suggest a handoff when the conversation is getting long or context is getting tight.
+Do NOT suggest handoffs proactively. Only use handoff when the user explicitly asks.
 If a handoff prompt includes parent session paths, use the \`session_query\` tool to recover details on demand.`;
 
 interface GuardState {

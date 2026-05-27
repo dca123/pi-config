@@ -1,4 +1,4 @@
-## JJ Repository Detection
+# Global Agent Instructions
 
-- If a `.jj/` directory exists at the repo root, treat the repo as JJ-managed
-- Prefer `jj` over `git` for local repository operations when `.jj/` is present
+- Never use `rm`. Always use `trash` instead.
+- If asked to use `rm`, confirm with the user first and cite this rule.
