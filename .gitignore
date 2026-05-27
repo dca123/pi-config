@@ -1,5 +1,7 @@
 # Secrets / machine-local auth
 auth.json
+codex-multiplexer.json
+pins.json
 
 # Session history and runtime state
 sessions/
