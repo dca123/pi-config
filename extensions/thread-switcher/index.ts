@@ -5,9 +5,9 @@
  * Arrow keys change the background preview to show selected session content.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { parseSessionEntries } from "@mariozechner/pi-coding-agent";
-import { SessionManager, type SessionInfo } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { parseSessionEntries } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { readFileSync, unlinkSync } from "node:fs";
 import {
   Container,
@@ -18,7 +18,7 @@ import {
   fuzzyFilter,
   type Focusable,
   CURSOR_MARKER,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
