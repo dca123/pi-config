@@ -1,148 +1,51 @@
 # pi-config
 
-Personal `pi` global config, extensions, and setup notes.
+Personal global Pi config, extensions, skills, themes, and setup notes.
 
-## What is included
+## Managed here
 
+- active extensions in `extensions/`
+- deferred/local extensions in `extensions-deferred/` and `extensions-local/`
+- skills, themes, prompts, modes, models, and loadouts
+- package manifest in `npm/package.json`
+
+## Machine-local / ignored
+
+- `auth.json`, `pins.json`, `codex-multiplexer.json`, `trust.json`
 - `settings.json`
-- `extensions/`
-- `.gitignore`
+- `sessions/`, `handoffs/`, `state/`, `cache/`, `debug/`
+- `git/` package clones
+- `pi-rewind/shadow-git/`
+- `node_modules/`, package locks, and generated extension build output
 
-## What is intentionally not included
+## Chezmoi setup
 
-These are ignored and stay machine-local:
+The dotfiles repo manages this repo as a chezmoi external:
 
-- `auth.json` — provider login / credentials
-- `sessions/` — saved conversation history
-- `git/` — package install cache / git package clones
-- logs / temp files
-
-## Prerequisites
-
-Install pi first:
-
-```bash
-npm install -g @mariozechner/pi-coding-agent
+```txt
+~/.pi/agent <- git@github.com:dca123/pi-config.git
 ```
 
-Pi docs note that global settings live in:
+The chezmoi bootstrap script installs `@earendil-works/pi-coding-agent@0.79.8`, creates `settings.json` only when missing, installs local extension dependencies, and links Plannotator skills from `~/Projects/plannotator/apps/pi-extension/skills`.
 
-- `~/.pi/agent/settings.json`
-
-and global extensions are auto-discovered from:
-
-- `~/.pi/agent/extensions/*.ts`
-- `~/.pi/agent/extensions/*/index.ts`
-
-## Fresh setup on a new machine
-
-### 1. Install pi
+## Manual setup without chezmoi
 
 ```bash
-npm install -g @mariozechner/pi-coding-agent
-```
-
-### 2. Clone this repo into pi's global config directory
-
-If `~/.pi/agent` does not exist yet:
-
-```bash
+npm install -g @earendil-works/pi-coding-agent@0.79.8
 git clone git@github.com:dca123/pi-config.git ~/.pi/agent
+cd ~/.pi/agent/npm && npm install
+cd ~/.pi/agent/extensions-deferred/sweep && npm install
+cd ~/.pi/agent/extensions-deferred/web-fetch && npm install
 ```
 
-If it already exists, back it up first:
+Then create `~/.pi/agent/settings.json`, authenticate with `/login`, and restart Pi or run `/reload`.
 
-```bash
-mv ~/.pi/agent ~/.pi/agent.backup.$(date +%Y%m%d-%H%M%S)
-git clone git@github.com:dca123/pi-config.git ~/.pi/agent
-```
+## Reproduction gates
 
-### 3. Start pi and authenticate
+This setup only reproduces elsewhere after this repo is committed and pushed to `git@github.com:dca123/pi-config.git`. Chezmoi clones that remote; unpushed local changes in `~/.pi/agent` are invisible to new machines.
 
-You still need to authenticate locally on each machine.
+The `pi-context` and `pi-context-prune` externals clone upstream remotes. Local dirty checkout changes on this machine are not reproducible until they are pushed or packaged.
 
-Options:
+The `plannotator` external clones `git@github.com:dca123/plannotator.git`. Local commits ahead of that remote are not reproducible until they are pushed.
 
-- run `pi` and use `/login`
-- or provide provider API keys via environment variables
-
-Examples from the pi docs:
-
-```bash
-pi
-/login
-```
-
-or:
-
-```bash
-pi
-```
-
-Since this config uses OpenAI Codex by default, you should log into the configured provider or set the appropriate credentials for that provider on the target machine.
-
-### 4. Reload or restart pi
-
-If pi was already open when you updated files:
-
-```text
-/reload
-```
-
-Otherwise just restart pi.
-
-## Current config defaults
-
-Current `settings.json` includes:
-
-- `defaultProvider: openai-codex`
-- `defaultModel: gpt-5.4`
-- `defaultThinkingLevel: medium`
-- `hideThinkingBlock: true`
-- `steeringMode: one-at-a-time`
-
-## Included extensions
-
-### `extensions/thread-switcher/index.ts`
-Adds the `/threads` command.
-
-After starting or reloading pi, use:
-
-```text
-/threads
-```
-
-### `extensions/exa-web-search.ts`
-Local extension currently stored in this config.
-
-## Updating this repo after local changes
-
-Because this repo lives directly at `~/.pi/agent`, your local config directory is also the git repo.
-
-Typical workflow:
-
-```bash
-cd ~/.pi/agent
-git status
-git add settings.json extensions .gitignore README.md
-git commit -m "Update pi config"
-git push
-```
-
-## Pulling updates on another machine
-
-```bash
-cd ~/.pi/agent
-git pull
-```
-
-Then either restart pi or run:
-
-```text
-/reload
-```
-
-## Notes
-
-- This is a **global** pi setup, not a project-local `.pi/` setup.
-- Pi docs also support project-local configuration via `.pi/settings.json` and `.pi/extensions/` if you later want per-repo reproducibility instead of one global setup for all projects.
+`/day-man review` dynamically loads helpers from `~/Projects/night-man`; because that project has no configured remote, it needs a manual checkout on another machine.

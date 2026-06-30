@@ -1,0 +1,9 @@
+{
+  "loadouts": {
+    "plan": {
+      "description": "Read-only planning and investigation",
+      "tools": ["read", "grep", "find", "ls"],
+      "instructions": "You are in planning mode. Do not edit or write files. Investigate first, then propose a concise plan."
+    }
+  }
+}

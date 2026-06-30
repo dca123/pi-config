@@ -2,9 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, truncateTail } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { networkInterfaces } from "node:os";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 type PersistedState = {
   pid: number;
@@ -18,7 +20,40 @@ type PersistedState = {
 
 const logPath = join(getAgentDir(), "debug", "debug.log");
 const statePath = join(getAgentDir(), "debug", "debug-state.json");
-const serverScriptPath = join(getAgentDir(), "extensions", "debug", "server.js");
+const serverScriptPath = join(dirname(fileURLToPath(import.meta.url)), "server.js");
+
+// Resolve a JS runtime able to execute server.js (plain CommonJS).
+// process.execPath is NOT usable when pi runs as a compiled bun executable —
+// invoking that binary with a script arg launches the agent, not the script.
+function resolveJsRuntime(): string {
+  const execBase = basename(process.execPath).toLowerCase().replace(/\.exe$/, "");
+  if (execBase === "node" || execBase === "bun") return process.execPath;
+
+  // Compiled/standalone host: find a real runtime on PATH.
+  for (const cmd of ["bun", "node"]) {
+    try {
+      const found = execFileSync(process.platform === "win32" ? "where" : "which", [cmd], {
+        encoding: "utf8",
+      })
+        .split("\n")[0]
+        .trim();
+      if (found && existsSync(found)) return found;
+    } catch {}
+  }
+
+  // Last resort: common install locations.
+  for (const candidate of [
+    join(process.env.HOME ?? "", ".bun/bin/bun"),
+    "/usr/local/bin/node",
+    "/opt/homebrew/bin/node",
+  ]) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+
+  throw new Error(
+    "No JS runtime (bun or node) found to launch the debug server. Install bun or node, or ensure it is on PATH.",
+  );
+}
 
 const START_PARAMS = Type.Object({
   port: Type.Optional(Type.Number({ description: "Preferred port. Defaults to 9876." })),
@@ -110,7 +145,8 @@ async function waitForServer(port: number) {
 }
 
 async function startServer(port: number, host: string) {
-  const child = spawn(process.execPath, [serverScriptPath, String(port), host, logPath, statePath], {
+  const runtime = resolveJsRuntime();
+  const child = spawn(runtime, [serverScriptPath, String(port), host, logPath, statePath], {
     detached: true,
     stdio: "ignore",
   });

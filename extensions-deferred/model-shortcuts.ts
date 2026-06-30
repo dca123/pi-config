@@ -1,10 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
 type Binding = {
   keys: string[];
   provider: string;
   modelId: string;
   label: string;
+  thinking: ThinkingLevel;
 };
 
 const BINDINGS: Binding[] = [
@@ -13,17 +16,19 @@ const BINDINGS: Binding[] = [
     provider: "openai-codex",
     modelId: "gpt-5.5",
     label: "GPT-5.5",
+    thinking: "low",
   },
   {
     keys: ["f2", "alt+2"],
     provider: "anthropic",
-    modelId: "claude-opus-4-6",
-    label: "Opus 4.6",
+    modelId: "claude-opus-4-8",
+    label: "Opus 4.8",
+    thinking: "high",
   },
 ];
 
 export default function (pi: ExtensionAPI) {
-  for (const { keys, provider, modelId, label } of BINDINGS) {
+  for (const { keys, provider, modelId, label, thinking } of BINDINGS) {
     for (const key of keys) {
       pi.registerShortcut(key, {
         description: `Switch to ${label}`,
@@ -38,7 +43,8 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify(`No API key for ${provider}/${modelId}`, "error");
             return;
           }
-          ctx.ui.notify(`Model: ${label}`, "success");
+          pi.setThinkingLevel(thinking);
+          ctx.ui.notify(`${label} (thinking: ${thinking})`, "success");
         },
       });
     }

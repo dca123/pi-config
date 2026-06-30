@@ -115,6 +115,11 @@ const summarize = async (conversation: string, ctx: { modelRegistry: any }) => {
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("pin", {
 		description: "Pin current session for later. Usage: /pin [description], /pin list, /pin remove, /pin help",
+		getArgumentCompletions: (prefix: string) => {
+			const subcommands = ["list", "remove", "help"];
+			const matches = subcommands.filter((cmd) => cmd.startsWith(prefix));
+			return matches.length > 0 ? matches.map((cmd) => ({ value: cmd, label: cmd })) : null;
+		},
 		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
 

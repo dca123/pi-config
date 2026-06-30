@@ -1,0 +1,9 @@
+{
+  "modes": {
+    "advisor": {
+      "provider": "anthropic",
+      "modelId": "claude-opus-4-8",
+      "thinkingLevel": "high"
+    }
+  }
+}

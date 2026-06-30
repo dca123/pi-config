@@ -71,6 +71,67 @@ export function decodeCodexTokenMetadata(accessToken) {
   }
 }
 
+export function getCodexAuthIdentity(auth) {
+  const metadata = decodeCodexTokenMetadata(auth?.access);
+  return {
+    accountId: typeof auth?.accountId === 'string' ? auth.accountId : metadata.accountId,
+    planType: metadata.planType,
+    email: metadata.email,
+  };
+}
+
+function labelsEqual(left, right) {
+  if (!left || !right) return false;
+  return String(left).toLowerCase() === String(right).toLowerCase();
+}
+
+export function findAccountLabelForAuth(config, auth) {
+  const identity = getCodexAuthIdentity(auth);
+  const accounts = getRecord(config?.accounts) || {};
+
+  if (identity.email) {
+    for (const [label, account] of Object.entries(accounts)) {
+      const accountIdentity = getCodexAuthIdentity(account?.auth);
+      if (labelsEqual(accountIdentity.email, identity.email)) return label;
+    }
+  }
+
+  if (identity.accountId) {
+    for (const [label, account] of Object.entries(accounts)) {
+      const accountIdentity = getCodexAuthIdentity(account?.auth);
+      if (accountIdentity.accountId === identity.accountId) return label;
+    }
+  }
+
+  return undefined;
+}
+
+function sanitizeLabel(value) {
+  const label = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return label || 'codex';
+}
+
+export function chooseAccountLabelForAuth(config, auth) {
+  const existing = findAccountLabelForAuth(config, auth);
+  if (existing) return existing;
+
+  const identity = getCodexAuthIdentity(auth);
+  const base = identity.email ? sanitizeLabel(identity.email.split('@')[0]) : sanitizeLabel(identity.accountId || 'codex');
+  const accounts = getRecord(config?.accounts) || {};
+  if (!accounts[base]) return base;
+
+  for (let suffix = 2; suffix < 100; suffix += 1) {
+    const candidate = `${base}-${suffix}`;
+    if (!accounts[candidate]) return candidate;
+  }
+
+  return `${base}-${Date.now()}`;
+}
+
 function normalizeWindow(value) {
   const raw = getRecord(value);
   if (!raw) return undefined;

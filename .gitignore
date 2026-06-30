@@ -1,25 +1,39 @@
 # Secrets / machine-local auth
-auth.json
-codex-multiplexer.json
-pins.json
+/auth.json
+/codex-multiplexer.json
+/pins.json
+/trust.json
+/skills/plannotator
 
 # Session history and runtime state
-sessions/
-git/
+/sessions/
+/git/
+/handoffs/
+/state/
+/context-prune/
+/pi-rewind/shadow-git/
+/.advisor-state.json
+/bundle-tool/
+/extensions-staging/
 
 # Logs / temp files
 *.log
 .DS_Store
+/debug/
+/settings.json.*.bak
 
 # Local agent settings
-settings.json
+/settings.json
 
 # Tool/runtime caches
-cache/
-bin/
+/cache/
+/bin/
 
-# Optional local deps if an extension installs packages in-place
+# Optional local deps/build output if an extension installs or builds in-place
 node_modules/
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+extensions-local/pi-rewind/node_modules/
+extensions-local/pi-rewind/dist/
+extensions-local/pi-rewind/shadow-git/

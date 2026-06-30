@@ -41,9 +41,11 @@ Stats are retained forever until `/codex-stats-clear`.
 
 ## Commands
 
-### `/codex-save <label>`
+### `/codex-save [label]`
 Copies current `openai-codex` OAuth credentials from Pi auth storage into multiplexer storage under `<label>`.
-Labels are custom user labels for observability. Existing labels are overwritten.
+When omitted, the label is derived from the Codex token email. Labels are custom user labels for observability. Existing labels are overwritten.
+
+Successful `/login` calls for `openai-codex` automatically save or update the matching multiplexer account and make it active.
 
 ### `/codex-use <label>`
 Restores the saved account auth into Pi's `openai-codex` auth storage, sets `active`, records a manual switch if changing account, and refreshes usage display.

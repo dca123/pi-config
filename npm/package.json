@@ -1,0 +1,12 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "dependencies": {
+    "@ogulcancelik/pi-session-recall": "^1.0.5",
+    "pi-context": "^2.0.0",
+    "pi-context-prune": "^1.2.0",
+    "pi-mono-multi-edit": "^1.7.3",
+    "pi-nvim": "^0.2.1",
+    "pi-rewind": "^0.5.0"
+  }
+}

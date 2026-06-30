@@ -1,0 +1,18 @@
+{
+  "providers": {
+    "anthropic": {
+      "models": [
+        {
+          "id": "claude-fable-5",
+          "name": "Claude Fable 5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 64000,
+          "cost": { "input": 10, "output": 50, "cacheRead": 1, "cacheWrite": 12.5 },
+          "compat": { "forceAdaptiveThinking": true }
+        }
+      ]
+    }
+  }
+}

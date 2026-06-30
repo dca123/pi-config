@@ -13,14 +13,36 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-	parseReport,
-	findLastRunId,
-	getUniqueRunIds,
-	getCompleteSessionsForRun,
-	buildReviewPrompt,
-	type ReportEntry,
-} from "/Users/devindasenanayake/Projects/night-man/src/review.js";
+import { homedir } from "node:os";
+import { join as joinPath } from "node:path";
+import { pathToFileURL } from "node:url";
+
+type ReportEntry = {
+	change: string;
+	itemName: string;
+	session: string;
+};
+
+type ReviewHelpers = {
+	parseReport: (content: string) => ReportEntry[];
+	findLastRunId: (entries: ReportEntry[]) => string | undefined;
+	getUniqueRunIds: (entries: ReportEntry[]) => string[];
+	getCompleteSessionsForRun: (entries: ReportEntry[], runId: string) => ReportEntry[];
+	buildReviewPrompt: (input: {
+		specFile: string;
+		sessionPath: string;
+		learningsFile?: string;
+		agentLoopFile: string;
+		nightmanSkillPath: string;
+	}) => string;
+};
+
+let reviewHelpersPromise: Promise<ReviewHelpers> | undefined;
+
+function loadReviewHelpers(): Promise<ReviewHelpers> {
+	reviewHelpersPromise ??= import(pathToFileURL(joinPath(homedir(), "Projects/night-man/src/review.js")).href) as Promise<ReviewHelpers>;
+	return reviewHelpersPromise;
+}
 
 const SCOPING_TOOLS = [
 	"read",
@@ -105,6 +127,11 @@ export default function dayManExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("day-man", {
 		description: "Toggle scoping mode (no fix suggestions)",
+		getArgumentCompletions: (prefix: string) => {
+			const subcommands = ["done", "review", "bot-review", "bot-review show", "bot-review --no-cr", "help"];
+			const matches = subcommands.filter((cmd) => cmd.startsWith(prefix));
+			return matches.length > 0 ? matches.map((cmd) => ({ value: cmd, label: cmd })) : null;
+		},
 		handler: async (args, ctx) => {
 			const trimmed = (args ?? "").trim().toLowerCase();
 
@@ -252,6 +279,13 @@ export default function dayManExtension(pi: ExtensionAPI): void {
 			ctx.ui.notify("No report.md found — run night-man run first", "error");
 			return;
 		}
+
+		const {
+			parseReport,
+			getUniqueRunIds,
+			getCompleteSessionsForRun,
+			buildReviewPrompt,
+		} = await loadReviewHelpers();
 
 		const entries = parseReport(reportContent);
 		if (entries.length === 0) {

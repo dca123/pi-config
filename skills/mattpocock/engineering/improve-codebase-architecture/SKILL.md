@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: Find deepening opportunities in a codebase, informed by the domain language in CONTEXT.md and the decisions in docs/adr/. Use when the user wants to improve architecture, find refactoring opportunities, consolidate tightly-coupled modules, or make a codebase more testable and AI-navigable.
+description: Find deepening opportunities in a codebase, informed by the domain language in CONTEXT.md and the decisions in docs/adr/. Use when the user wants to improve architecture, find refactoring opportunities, consolidate tightly-coupled modules, keep invalid or foreign states out of Module Interfaces, or make a codebase more testable and AI-navigable.
 ---
 
 # Improve Codebase Architecture
@@ -23,6 +23,7 @@ Use these terms exactly in every suggestion. Consistent language is the point �
 Key principles (see [LANGUAGE.md](LANGUAGE.md) for the full list):
 
 - **Deletion test**: imagine deleting the module. If complexity vanishes, it was a pass-through. If complexity reappears across N callers, it was earning its keep.
+- **React screens are Modules.** Do not propose a separate screen-shaped view-model Module just to move React-local composition into pure code. If deleting the extracted Module would only move the same prop assembly back into the React Module, it is shallow. Prefer pure projection Modules only when they hide reusable policy, a state matrix, or an invariant that would otherwise spread across JSX and tests.
 - **The interface is the test surface.**
 - **One adapter = hypothetical seam. Two adapters = real seam.**
 
@@ -37,9 +38,11 @@ Read the project's domain glossary and any ADRs in the area you're touching firs
 Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
+- Where has React-local composition been extracted into a screen mirror? Treat the React screen itself as the Module unless the extracted Module hides reusable policy, a state matrix, or an invariant.
 - Where are modules **shallow** — interface nearly as complex as the implementation?
 - Where have pure functions been extracted just for testability, but the real bugs hide in how they're called (no **locality**)?
 - Where do tightly-coupled modules leak across their seams?
+- Where is the **domain cutover** too late? The domain cutover is the **Seam** where API/native/storage vocabulary becomes domain vocabulary. A deeper **Interface** keeps impossible domain states, illegal field combinations, and vocabulary from another **Seam** unrepresentable to callers; the **Implementation** or **Adapter** absorbs validation, translation, and normalization.
 - Which parts of the codebase are untested, or hard to test through their current interface?
 
 Apply the **deletion test** to anything you suspect is shallow: would deleting it concentrate complexity, or just move it? A "yes, concentrates" is the signal you want.

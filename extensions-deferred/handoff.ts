@@ -3,7 +3,6 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
-  SessionEntry,
   SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -13,15 +12,18 @@ import {
   serializeConversation,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
-const HANDOFF_GUARD_TOKEN_THRESHOLD = 250_000;
-const HANDOFF_GUARD_PERCENT_THRESHOLD = 90;
-const GUARD_STATE_TYPE = "local-handoff:guard-state";
-const AUTO_HANDOFF_GOAL =
-  "Continue the current discussion in a fresh session. Preserve the current design state, unresolved questions, alternatives considered, assumptions, and immediate next steps.";
-const INTERNAL_COMMAND = "handoff-run";
 const MAX_FILE_LIST_ITEMS = 40;
+
+// On-disk handoff store. `/handoff <goal>` saves the distilled prompt here and
+// prints a `/handoff <id>` line; running that command in any new session on the
+// same machine picks the handoff up.
+const HANDOFF_STORE = join(homedir(), ".pi", "agent", "handoffs");
+const HANDOFF_ID_RE = /^[a-z0-9]{6}$/;
+const ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 
 const SYSTEM_PROMPT = `You are a context transfer assistant. Read a pi coding session conversation and produce a strict handoff summary for a NEW session.
 
@@ -93,15 +95,44 @@ Use the \`handoff\` tool only when the user explicitly asks to move the work int
 Do NOT suggest handoffs proactively. Only use handoff when the user explicitly asks.
 If a handoff prompt includes parent session paths, use the \`session_query\` tool to recover details on demand.`;
 
-interface GuardState {
-  suppressed: true;
-  reason: "declined" | "dismissed";
-}
+const RECAP_SYSTEM_PROMPT = `You are a session recap assistant. Read a pi coding session conversation and produce a concise accomplishment summary to bring back to the parent session that initiated this work.
 
-interface PendingHandoff {
-  goal: string;
-  source: "tool" | "guard";
-}
+The parent session handed off a task to this session. Now the work is done (or paused), and we need to report back what happened.
+
+Do NOT continue the conversation.
+Do NOT answer any open questions.
+Do NOT invent facts.
+Do NOT call tools.
+
+Use this EXACT format:
+
+## Recap
+
+### Accomplished
+- [x] [What was completed]
+
+### Key Changes
+- **[File/area]**: [What changed and why]
+- Use code pointers like path/to/file.ts:42 or path/to/file.ts#symbol when relevant
+- [(none) if no files were changed]
+
+### Decisions Made
+- **[Decision]**: [Brief rationale]
+- [(none) if no notable decisions]
+
+### Still Open
+- [ ] [Items not finished or deferred]
+- [(none) if everything was completed]
+
+### Notes
+- [Non-obvious findings, caveats, gotchas, or context the parent session needs]
+- [(none) if nothing notable]
+
+Rules:
+- Be concise and concrete.
+- Focus on outcomes and artifacts, not process.
+- Preserve exact file paths, function names, commands, and error messages.
+- Output markdown only. No preamble.`;
 
 type GenerateResult =
   | { type: "prompt"; text: string }
@@ -122,12 +153,65 @@ function normalizeGoal(goal: string): string {
   return goal.replace(/\s+/g, " ").trim();
 }
 
-function createPendingId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+function randomHandoffId(): string {
+  let id = "";
+  for (let i = 0; i < 6; i++) id += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
+  return id;
 }
 
-function formatCount(n: number): string {
-  return new Intl.NumberFormat("en-US").format(n);
+function stripFrontmatter(raw: string): string {
+  if (!raw.startsWith("---\n")) return raw;
+  const end = raw.indexOf("\n---\n", 4);
+  if (end === -1) return raw;
+  return raw.slice(end + 5).replace(/^\n+/, "");
+}
+
+function saveHandoff(
+  doc: string,
+  goal: string,
+  parent: string | undefined,
+  type: "handoff" | "recap" = "handoff",
+): string {
+  mkdirSync(HANDOFF_STORE, { recursive: true });
+  let id = randomHandoffId();
+  while (existsSync(join(HANDOFF_STORE, `${id}.md`))) id = randomHandoffId();
+  const frontmatter = [
+    "---",
+    `id: ${id}`,
+    `type: ${type}`,
+    `created: ${new Date().toISOString()}`,
+    `goal: ${JSON.stringify(goal)}`,
+    `parent: ${parent ? JSON.stringify(parent) : "null"}`,
+    "---",
+    "",
+    "",
+  ].join("\n");
+  writeFileSync(join(HANDOFF_STORE, `${id}.md`), frontmatter + doc, "utf-8");
+  return id;
+}
+
+function loadHandoff(id: string): string | null {
+  const file = join(HANDOFF_STORE, `${id}.md`);
+  if (!existsSync(file)) return null;
+  try {
+    return stripFrontmatter(readFileSync(file, "utf-8")).trim();
+  } catch {
+    return null;
+  }
+}
+
+function handoffLabel(id: string): string {
+  try {
+    const raw = readFileSync(join(HANDOFF_STORE, `${id}.md`), "utf-8");
+    const typeMatch = raw.match(/^type:\s*(.*)$/m);
+    const type = typeMatch ? typeMatch[1].trim() : "handoff";
+    const match = raw.match(/^goal:\s*(.*)$/m);
+    const goal = match ? match[1].trim().replace(/^"(.*)"$/, "$1") : "";
+    const prefix = type === "recap" ? "↩ " : "";
+    return goal ? `${id} — ${prefix}${goal.slice(0, 60)}` : `${id}${prefix ? " — " + prefix.trim() : ""}`;
+  } catch {
+    return id;
+  }
 }
 
 function makeFileOps(): FileOps {
@@ -255,41 +339,6 @@ function buildRecallPreamble(parentSessionFile: string | undefined, hasSessionQu
   return lines.join("\n");
 }
 
-function isGuardState(value: unknown): value is GuardState {
-  return (
-    isRecord(value) &&
-    value.suppressed === true &&
-    (value.reason === "declined" || value.reason === "dismissed")
-  );
-}
-
-function isGuardSuppressed(sessionManager: ExtensionContext["sessionManager"]): boolean {
-  const branch = sessionManager.getBranch();
-  for (let i = branch.length - 1; i >= 0; i--) {
-    const entry = branch[i] as SessionEntry & { customType?: string; data?: unknown };
-    if (entry.type !== "custom" || entry.customType !== GUARD_STATE_TYPE) continue;
-    return isGuardState(entry.data) && entry.data.suppressed;
-  }
-  return false;
-}
-
-function suppressGuard(pi: ExtensionAPI, reason: GuardState["reason"]): void {
-  pi.appendEntry(GUARD_STATE_TYPE, { suppressed: true, reason } satisfies GuardState);
-}
-
-function shouldOfferHandoff(usage: { tokens: number | null; percent: number | null }): boolean {
-  if (usage.tokens !== null && usage.tokens >= HANDOFF_GUARD_TOKEN_THRESHOLD) return true;
-  if (usage.percent !== null && usage.percent >= HANDOFF_GUARD_PERCENT_THRESHOLD) return true;
-  return false;
-}
-
-function formatUsage(usage: { tokens: number | null; percent: number | null }): string {
-  const parts: string[] = [];
-  if (usage.tokens !== null) parts.push(`${formatCount(usage.tokens)} tokens`);
-  if (usage.percent !== null) parts.push(`${Math.round(usage.percent)}%`);
-  return parts.join(" · ") || "high usage";
-}
-
 async function resolveAuth(
   ctx: ExtensionContext,
   model: Model<any>,
@@ -318,9 +367,11 @@ async function generateHandoffSummary(
   conversationText: string,
   goal: string,
   ctx: ExtensionContext,
+  overrideSystemPrompt?: string,
+  loaderText = "Generating handoff prompt...",
 ): Promise<GenerateResult> {
   return ctx.ui.custom<GenerateResult>((tui, theme, _kb, done) => {
-    const loader = new BorderedLoader(tui, theme, "Generating handoff prompt...");
+    const loader = new BorderedLoader(tui, theme, loaderText);
     loader.onAbort = () => done(null);
 
     const run = async () => {
@@ -338,7 +389,7 @@ async function generateHandoffSummary(
 
       const response = await complete(
         ctx.model!,
-        { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
+        { systemPrompt: overrideSystemPrompt ?? SYSTEM_PROMPT, messages: [userMessage] },
         { apiKey, headers, signal: loader.signal },
       );
 
@@ -380,18 +431,8 @@ async function generateHandoffSummary(
 }
 
 export default function (pi: ExtensionAPI) {
-  let guardPrompted = false;
-  let guardSuppressed = false;
-  const pendingHandoffs = new Map<string, PendingHandoff>();
-
   function hasSessionQueryTool(): boolean {
     return pi.getAllTools().some((tool) => tool.name === "session_query");
-  }
-
-  function queuePendingHandoff(goal: string, source: PendingHandoff["source"]): string {
-    const id = createPendingId();
-    pendingHandoffs.set(id, { goal, source });
-    return id;
   }
 
   async function runHandoff(goal: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -439,80 +480,117 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const sessionName =
-      normalizedGoal.length > 80 ? `${normalizedGoal.slice(0, 77)}...` : normalizedGoal;
-
-    // Cast for forward-compatibility while still loading on Pi 0.67.x, whose
-    // local ExtensionCommandContext typings do not yet include withSession.
-    const switchResult = await ctx.newSession({
-      parentSession,
-      setup: async (sm) => {
-        sm.appendSessionInfo(sessionName);
+    const id = saveHandoff(editedPrompt, normalizedGoal, parentSession);
+    pi.sendMessage(
+      {
+        customType: "handoff-saved",
+        content: `Handoff saved → /handoff ${id}`,
+        display: true,
       },
-      withSession: async (newCtx) => {
-        newCtx.ui.setEditorText(editedPrompt);
-        newCtx.ui.notify("Handoff ready — edit if needed, press Enter to send.", "info");
-      },
-    } as any);
-    if (switchResult.cancelled) {
-      ctx.ui.notify("New session cancelled.", "info");
-      return;
-    }
+      { triggerTurn: false, deliverAs: "nextTurn" },
+    );
+    ctx.ui.notify(`Handoff saved → /handoff ${id}  (run that in a new pane)`, "info");
   }
 
-  pi.on("session_start", (_event, ctx) => {
-    guardPrompted = false;
-    guardSuppressed = isGuardSuppressed(ctx.sessionManager);
-  });
+  async function pickupHandoff(id: string, ctx: ExtensionCommandContext): Promise<void> {
+    const doc = loadHandoff(id);
+    if (!doc) {
+      ctx.ui.notify(`Handoff ${id} not found.`, "error");
+      return;
+    }
+    ctx.ui.notify(`Picking up handoff ${id}.`, "info");
+    pi.sendUserMessage(doc);
+  }
+
+  async function runRecap(ctx: ExtensionCommandContext): Promise<void> {
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Recap requires interactive mode.", "error");
+      return;
+    }
+    if (!ctx.model) {
+      ctx.ui.notify("No model selected.", "error");
+      return;
+    }
+
+    const gathered = gatherConversation(ctx);
+    if (!gathered) {
+      ctx.ui.notify("No conversation to recap.", "error");
+      return;
+    }
+
+    const result = await generateHandoffSummary(
+      gathered.text,
+      "Produce a recap of what was accomplished in this session.",
+      ctx,
+      RECAP_SYSTEM_PROMPT,
+      "Generating recap...",
+    );
+    if (!result) {
+      ctx.ui.notify("Recap cancelled.", "info");
+      return;
+    }
+    if (result.type === "error") {
+      ctx.ui.notify(`Recap failed: ${result.message}`, "error");
+      return;
+    }
+
+    const sessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
+    const fileAppendix = buildFileAppendix(gathered.messages);
+    const parts: string[] = [result.text.trim()];
+    if (fileAppendix) parts.push(fileAppendix);
+    const finalDoc = parts.join("\n\n");
+
+    const editedDoc = await ctx.ui.editor("Edit recap", finalDoc);
+    if (editedDoc === undefined) {
+      ctx.ui.notify("Recap cancelled.", "info");
+      return;
+    }
+
+    const id = saveHandoff(editedDoc, "Session recap", sessionFile, "recap");
+    pi.sendMessage(
+      {
+        customType: "recap-saved",
+        content: `Recap saved → /handoff ${id}`,
+        display: true,
+      },
+      { triggerTurn: false, deliverAs: "nextTurn" },
+    );
+    ctx.ui.notify(`Recap saved → /handoff ${id}  (run that in the parent session)`, "info");
+  }
 
   pi.on("before_agent_start", (event) => {
     return { systemPrompt: event.systemPrompt + HANDOFF_HINT };
   });
 
-  pi.on("turn_end", async (_event, ctx) => {
-    if (!ctx.hasUI || guardPrompted || guardSuppressed) return;
-
-    const usage = ctx.getContextUsage();
-    if (!usage || !shouldOfferHandoff(usage)) return;
-
-    guardPrompted = true;
-    const sessionBefore = ctx.sessionManager.getSessionFile();
-    const choice = await ctx.ui.select(
-      `Context at ${formatUsage(usage)} — handoff to a new session?`,
-      ["Yes, handoff", "No, keep going"],
-    );
-
-    if (ctx.sessionManager.getSessionFile() !== sessionBefore) return;
-
-    if (choice !== "Yes, handoff") {
-      guardSuppressed = true;
-      suppressGuard(pi, choice ? "declined" : "dismissed");
-      return;
-    }
-
-    guardSuppressed = true;
-    const id = queuePendingHandoff(AUTO_HANDOFF_GOAL, "guard");
-    ctx.ui.setEditorText(`/${INTERNAL_COMMAND} ${id}`);
-    ctx.ui.notify("Handoff prepared — press Enter to run it.", "info");
-  });
-
   pi.registerCommand("handoff", {
-    description: "Transfer context to a new focused session",
-    handler: async (args, ctx) => {
-      await runHandoff(args, ctx);
-    },
-  });
+    description: "Hand off to a new session, or /handoff <id> to pick one up",
+    getArgumentCompletions: (prefix: string) => {
+      const subcommands = ["recap"];
+      const items: { value: string; label: string }[] = subcommands
+        .filter((cmd) => cmd.startsWith(prefix))
+        .map((cmd) => ({ value: cmd, label: cmd }));
 
-  pi.registerCommand(INTERNAL_COMMAND, {
+      if (existsSync(HANDOFF_STORE)) {
+        for (const name of readdirSync(HANDOFF_STORE)) {
+          if (!name.endsWith(".md")) continue;
+          const sid = name.slice(0, -3);
+          if (!sid.startsWith(prefix)) continue;
+          items.push({ value: sid, label: handoffLabel(sid) });
+        }
+      }
+      return items.length > 0 ? items : null;
+    },
     handler: async (args, ctx) => {
-      const id = args.trim();
-      const pending = pendingHandoffs.get(id);
-      if (!pending) {
-        ctx.ui.notify("No pending handoff found.", "warning");
+      const arg = args.trim();
+      if (arg === "recap") {
+        await runRecap(ctx);
         return;
       }
-      pendingHandoffs.delete(id);
-      await runHandoff(pending.goal, ctx);
+      if (HANDOFF_ID_RE.test(arg) && existsSync(join(HANDOFF_STORE, `${arg}.md`))) {
+        await pickupHandoff(arg, ctx);
+        return;
+      }
+      await runHandoff(args, ctx);
     },
   });
 
@@ -545,14 +623,13 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const id = queuePendingHandoff(goal, "tool");
-      ctx.ui.setEditorText(`/${INTERNAL_COMMAND} ${id}`);
+      await runHandoff(goal, ctx as ExtensionCommandContext);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: "Prepared handoff command in the editor. After this turn finishes, press Enter to run it.",
+            text: "Handoff flow started.",
           },
         ],
         details: {},

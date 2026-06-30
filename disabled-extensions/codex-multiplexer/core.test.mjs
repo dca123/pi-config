@@ -9,7 +9,9 @@ import {
   parseCodexUsageSnapshot,
   pickNextRoundRobinAccount,
   clearStats,
+  chooseAccountLabelForAuth,
   emptyConfig,
+  findAccountLabelForAuth,
   normalizeConfig,
   recordRateLimitEvent,
   recordSwitchEvent,
@@ -190,4 +192,33 @@ test('display account prefers saved active account over current auth', () => {
     auth: { type: 'oauth', access: 'saved-token' },
     saved: true,
   });
+});
+
+test('matches saved accounts by codex token email before shared account id', () => {
+  const config = emptyConfig();
+  saveAccount(config, 'ai0', { type: 'oauth', access: fakeJwt({
+    'https://api.openai.com/auth': { chatgpt_account_id: 'shared-team' },
+    'https://api.openai.com/profile': { email: 'ai0@example.com' },
+  }) }, 1000);
+  saveAccount(config, 'ai1', { type: 'oauth', access: fakeJwt({
+    'https://api.openai.com/auth': { chatgpt_account_id: 'shared-team' },
+    'https://api.openai.com/profile': { email: 'ai1@example.com' },
+  }) }, 1000);
+
+  const label = findAccountLabelForAuth(config, { type: 'oauth', access: fakeJwt({
+    'https://api.openai.com/auth': { chatgpt_account_id: 'shared-team' },
+    'https://api.openai.com/profile': { email: 'ai1@example.com' },
+  }) });
+
+  assert.equal(label, 'ai1');
+});
+
+test('chooses stable email-derived label for newly logged-in codex auth', () => {
+  const config = emptyConfig();
+  const auth = { type: 'oauth', access: fakeJwt({
+    'https://api.openai.com/auth': { chatgpt_account_id: 'acct-123' },
+    'https://api.openai.com/profile': { email: 'Codex.User+test@example.com' },
+  }) };
+
+  assert.equal(chooseAccountLabelForAuth(config, auth), 'codex.user-test');
 });

@@ -19,6 +19,10 @@ function updateStatus(pi: ExtensionAPI, ctx: ExtensionContext): void {
 	ctx.ui.setStatus(STATUS_KEY, undefined);
 }
 
+// One-shot announcement consumed by the next before_agent_start, so a mid-session
+// toggle is called out once instead of silently changing the available tool set.
+let pendingNotice: "enabled" | "disabled" | undefined;
+
 function toggleEditTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
 	const activeTools = pi.getActiveTools();
 	const editToolsDisabled = areEditToolsDisabled(pi);
@@ -27,6 +31,7 @@ function toggleEditTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
 		: activeTools.filter((toolName) => !EDIT_TOOLS.includes(toolName as (typeof EDIT_TOOLS)[number]));
 
 	pi.setActiveTools(nextTools);
+	pendingNotice = editToolsDisabled ? "enabled" : "disabled";
 	updateStatus(pi, ctx);
 	ctx.ui.notify(editToolsDisabled ? "Edit tools enabled" : "Edit tools disabled", "info");
 }
@@ -44,12 +49,34 @@ export default function editToggle(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event, ctx) => {
 		updateStatus(pi, ctx);
 
-		if (!areEditToolsDisabled(pi)) {
-			return;
+		const disabled = areEditToolsDisabled(pi);
+		const result: {
+			systemPrompt?: string;
+			message?: { customType: string; content: string; display: boolean };
+		} = {};
+
+		if (disabled) {
+			result.systemPrompt = `${event.systemPrompt}\n\n${DISABLED_PROMPT}`;
 		}
 
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${DISABLED_PROMPT}`,
-		};
+		if (pendingNotice === "disabled") {
+			result.message = {
+				customType: "edit-toggle-notice",
+				content:
+					"Edit tools were just disabled. The edit and write tools are now UNAVAILABLE — " +
+					"do not attempt to modify files this turn.",
+				display: false,
+			};
+		} else if (pendingNotice === "enabled") {
+			result.message = {
+				customType: "edit-toggle-notice",
+				content: "Edit tools were just enabled. The edit and write tools are now AVAILABLE again.",
+				display: false,
+			};
+		}
+		pendingNotice = undefined;
+
+		if (!result.systemPrompt && !result.message) return;
+		return result;
 	});
 }
