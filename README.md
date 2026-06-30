@@ -20,7 +20,16 @@ Personal global Pi config, extensions, skills, themes, and setup notes.
 
 ## Chezmoi setup
 
-The dotfiles repo manages this repo as a chezmoi external:
+Initialize the dotfiles repo from the actual remote:
+
+```bash
+chezmoi init git@github.com:dca123/config.git
+chezmoi edit-config
+chezmoi diff
+chezmoi apply
+```
+
+That repo manages this repo as a chezmoi external:
 
 ```txt
 ~/.pi/agent <- git@github.com:dca123/pi-config.git
